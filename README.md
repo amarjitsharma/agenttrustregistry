@@ -1,0 +1,398 @@
+# Agent Trust Registry (ATR) — POC
+
+A lightweight proof-of-concept for an **Agent Trust Registry**: a DNS-like naming + cryptographic identity + lifecycle governance service for autonomous agents.
+
+This project is inspired by the emerging “agentic identity / agent naming” space and explores how a registry can go beyond names to deliver **verifiable trust at internet scale**.
+
+## What this is
+**ATR** allows you to:
+- Register an agent name (e.g. `order-bot.acme`)
+- Issue a cryptographic identity (keypair + X.509 certificate)
+- Publish trust metadata (capabilities, owner, status, expiry)
+- Rotate credentials
+- Revoke identities
+- Verify a presented agent certificate/token against registry state
+
+## What this is NOT
+- Not a production CA
+- Not full DNS integration
+- Not AI deciding access
+- Not a UI-heavy product (API + CLI for speed)
+
+---
+
+## Key Ideas
+
+### 1) Naming is table-stakes; trust is the product
+Agent identity is only meaningful when it is:
+- **Cryptographically verifiable**
+- **Time-bounded**
+- **Revocable**
+- **Auditable**
+
+### 2) Lifecycle is where most trust systems fail
+Crypto rarely fails. Operations fail:
+- expired certs
+- missing rotation
+- unclear ownership
+- lack of audit trails
+
+---
+
+## Architecture (POC)
+
+- **FastAPI** service exposes registry and verification endpoints
+- **SQLite** by default (PostgreSQL optional)
+- **Local CA** (dev root + intermediate) for issuing leaf certs
+- **Audit log** for registry actions
+- **CLI** to drive the end-to-end demo
+
+High-level components:
+- `registry-api`: agent CRUD + lifecycle operations
+- `pki`: local CA + cert issuance + rotation
+- `verifier`: validates agent proof (cert or signed token) + registry status
+- `cli`: scripted flows to demo register → verify → rotate → revoke
+
+---
+
+## Data Model (conceptual)
+
+Agent Record:
+- `agent_name` (string, unique)
+- `owner` (string)
+- `capabilities` (json array)
+- `status` (`active` | `revoked`)
+- `cert_fingerprint` (string)
+- `issued_at` (timestamp)
+- `expires_at` (timestamp)
+- `created_at`, `updated_at`
+
+Audit Event:
+- `event_type` (register/rotate/revoke/verify)
+- `actor` (who initiated)
+- `agent_name`
+- `metadata` (json)
+- `timestamp`
+
+---
+
+## API Endpoints (initial)
+
+### Registry
+- `POST /v1/agents`  
+  Register an agent + issue credentials
+- `GET /v1/agents/{agent_name}`  
+  Fetch agent trust metadata
+- `POST /v1/agents/{agent_name}/rotate`  
+  Rotate identity (new cert)
+- `POST /v1/agents/{agent_name}/revoke`  
+  Revoke identity (status=revoked)
+
+### Verification
+- `POST /v1/verify/cert`  
+  Verify a presented certificate and check registry status (active, unexpired)
+- `GET /v1/resolve/{agent_name}`  
+  “Resolve” agent name to trust metadata (like a lookup)
+
+### Health / Ops
+- `GET /healthz`
+- `GET /readyz`
+
+---
+
+## Quickstart
+
+### Requirements
+- Python 3.11+
+- (Optional) Docker and docker-compose
+
+### Local Setup
+
+1. **Create virtual environment and install dependencies:**
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+2. **Initialize database:**
+The database will be created automatically on first run. For SQLite (default), no additional setup is needed.
+
+3. **Start the API server:**
+```bash
+uvicorn atr.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000`
+- API docs: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/healthz`
+
+### Using Docker
+
+**Build and run with docker-compose:**
+```bash
+docker-compose up --build
+```
+
+The API will be available at `http://localhost:8000`
+
+**To use PostgreSQL instead of SQLite:**
+```bash
+# Start with PostgreSQL profile
+docker-compose --profile postgres up --build
+
+# Set DATABASE_URL in your environment
+export DATABASE_URL=postgresql://atr:atr_password@localhost:5432/atr
+```
+
+---
+
+## Demo
+
+### CLI Demo Script
+
+Run the end-to-end lifecycle demo:
+
+```bash
+# Make sure the API server is running first
+python -m atr.cli.demo
+```
+
+This will demonstrate:
+1. **Register** a new agent
+2. **Verify** the agent's certificate
+3. **Rotate** the certificate
+4. **Verify** again (with new certificate)
+5. **Revoke** the agent
+6. **Verify** one more time (should fail)
+
+### Manual API Demo
+
+**1. Register an agent:**
+```bash
+curl -X POST "http://localhost:8000/v1/agents" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_name": "my-agent.example",
+    "owner": "alice",
+    "capabilities": ["read", "write"]
+  }'
+```
+
+**2. Get agent metadata:**
+```bash
+curl "http://localhost:8000/v1/agents/my-agent.example"
+```
+
+**3. Resolve agent:**
+```bash
+curl "http://localhost:8000/v1/resolve/my-agent.example"
+```
+
+**4. Rotate certificate:**
+```bash
+curl -X POST "http://localhost:8000/v1/agents/my-agent.example/rotate"
+```
+
+**5. Verify certificate:**
+```bash
+# First, get the certificate PEM (from database or agent's storage)
+# Then verify it:
+curl -X POST "http://localhost:8000/v1/verify/cert" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cert_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+  }'
+```
+
+**6. Revoke agent:**
+```bash
+curl -X POST "http://localhost:8000/v1/agents/my-agent.example/revoke"
+```
+
+---
+
+## Testing
+
+Run the test suite:
+
+```bash
+pytest tests/ -v
+```
+
+Test coverage includes:
+- Agent name validation (edge cases)
+- Register/rotate/revoke behaviors
+- Certificate verification (success and failure cases)
+- Revoked agent verification failure
+- Expired certificate verification failure
+
+---
+
+## Project Structure
+
+```
+agent-trust-registry/
+├── atr/
+│   ├── main.py                 # FastAPI application
+│   ├── api/
+│   │   ├── routes_agents.py    # Agent lifecycle endpoints
+│   │   ├── routes_verify.py   # Verification endpoints
+│   │   └── routes_health.py   # Health check endpoints
+│   ├── core/
+│   │   ├── config.py          # Configuration management
+│   │   ├── db.py              # Database session management
+│   │   ├── models.py          # SQLAlchemy models
+│   │   ├── schemas.py         # Pydantic schemas
+│   │   ├── validators.py      # Input validation
+│   │   ├── audit.py           # Audit logging
+│   │   └── security.py        # Security utilities
+│   ├── pki/
+│   │   ├── ca.py              # Certificate Authority
+│   │   ├── issue.py           # Certificate issuance
+│   │   └── fingerprints.py    # Fingerprint utilities
+│   └── cli/
+│       └── demo.py            # CLI demo script
+├── tests/
+│   ├── test_validators.py    # Validator tests
+│   ├── test_lifecycle.py     # Lifecycle tests
+│   └── test_verify.py        # Verification tests
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+├── .gitignore
+└── README.md
+```
+
+---
+
+## Configuration
+
+Configuration is managed via environment variables or `.env` file:
+
+- `DATABASE_URL`: Database connection string (default: `sqlite:///./atr.db`)
+- `PKI_ROOT_DIR`: Directory for CA certificates (default: `./var/pki`)
+- `KEYS_ROOT_DIR`: Directory for agent private keys (default: `./var/keys`)
+- `HOST`: Server host (default: `0.0.0.0`)
+- `PORT`: Server port (default: `8000`)
+- `CA_VALIDITY_DAYS`: CA certificate validity (default: `3650`)
+- `CERT_VALIDITY_DAYS`: Agent certificate validity (default: `30`)
+
+---
+
+## Security Notes
+
+⚠️ **This is a proof-of-concept, not production-ready:**
+
+- Private keys are stored in `./var/keys/` (gitignored)
+- CA certificates are stored in `./var/pki/` (gitignored)
+- Default certificate validity is 30 days (short for demo)
+- No secrets or hardcoded credentials in git-tracked files
+- Certificate chain validation is simplified for POC
+
+**For production use, consider:**
+- Proper key management (HSM, key vault)
+- Full certificate chain validation
+- CRL/OCSP for revocation checking
+- Rate limiting and authentication
+- Proper logging and monitoring
+
+---
+
+## Development
+
+**Run with auto-reload:**
+```bash
+uvicorn atr.main:app --reload
+```
+
+**Run tests with coverage:**
+```bash
+pytest tests/ --cov=atr --cov-report=html
+```
+
+**Check code style:**
+```bash
+# Install dev dependencies
+pip install black flake8 mypy
+
+# Format code
+black atr/ tests/
+
+# Lint
+flake8 atr/ tests/
+
+# Type check
+mypy atr/
+```
+
+---
+
+## Architecture Diagram
+
+```mermaid
+flowchart TB
+  %% =========================
+  %% Agent Trust Registry (ATR)
+  %% =========================
+
+  subgraph Clients["Clients"]
+    CLI["CLI Demo\n(atr cli)"]
+    Agent["Agent Runtime\n(AI Agent / Tool Runner)"]
+  end
+
+  subgraph ATR["Agent Trust Registry API (FastAPI)"]
+    AgentsAPI["Agents API\n/register /rotate /revoke /get"]
+    ResolveAPI["Resolve API\n/resolve/{agent_name}"]
+    VerifyAPI["Verify API\n/verify/cert"]
+    AuditSvc["Audit Logger\n(register/rotate/revoke/verify)"]
+  end
+
+  subgraph PKI["PKI Service (Local CA for POC)"]
+    RootCA["Dev Root CA\n(off-path, long-lived)"]
+    IntCA["Intermediate CA\n(issues leaf certs)"]
+    Issuer["Cert Issuer\n(X.509 + SAN=agent_name)\nFingerprinting"]
+    KeyStore["Key Material (POC)\n./var/keys/<agent>/\n.gitignored"]
+  end
+
+  subgraph Data["Data Stores"]
+    RegistryDB["Registry DB\nSQLite (default) / Postgres (optional)\nAgent metadata + active fingerprint"]
+    AuditDB["Audit Log Table\nappend-only events"]
+  end
+
+  subgraph Verifier["Verification Logic"]
+    ChainCheck["Chain Validation\n(cert chains to Intermediate)"]
+    StatusCheck["Registry Check\n(active + not expired + fingerprint match)"]
+    Decision["Decision\nverified=true/false + reason"]
+  end
+
+  %% Flows
+  CLI -->|Register/Rotate/Revoke| AgentsAPI
+  Agent -->|Present cert (PEM)\n(or mTLS in future)| VerifyAPI
+
+  AgentsAPI --> Issuer
+  Issuer --> IntCA
+  Issuer --> KeyStore
+  Issuer -->|cert + fingerprint| RegistryDB
+
+  ResolveAPI --> RegistryDB
+
+  VerifyAPI --> ChainCheck
+  VerifyAPI --> StatusCheck
+  ChainCheck --> Decision
+  StatusCheck --> Decision
+  StatusCheck --> RegistryDB
+
+  AgentsAPI --> AuditSvc
+  VerifyAPI --> AuditSvc
+  AuditSvc --> AuditDB
+
+  %% Notes
+  Decision -->|Response:\nagent_name, verified,\nstatus, expires_at, reason| Clients
+```
+
+---
+
+## License
+
+This is a proof-of-concept project for demonstration purposes.

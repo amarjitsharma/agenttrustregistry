@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./atr.db
+      - PKI_ROOT_DIR=./var/pki
+      - KEYS_ROOT_DIR=./var/keys
+    volumes:
+      - ./var:/app/var
+      - ./atr.db:/app/atr.db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional PostgreSQL service
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=atr
+      - POSTGRES_PASSWORD=atr_password
+      - POSTGRES_DB=atr
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    profiles:
+      - postgres
+
+volumes:
+  postgres_data:
