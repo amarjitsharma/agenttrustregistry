@@ -374,6 +374,199 @@ mypy atr/
 
 ---
 
+## Future Implementation Roadmap
+
+Based on industry best practices and emerging standards (see [GoDaddy's Agent Name Service Registry](https://www.godaddy.com/resources/news/building-trust-at-internet-scale-godaddys-agent-name-service-registry-for-the-agentic-ai-marketplace)), the following enhancements are planned for production-scale deployment:
+
+### Phase 1: DNS Integration & Discovery (High Priority)
+
+**Goal:** Enable DNS-based agent discovery and resolution
+
+**Required Changes:**
+- [ ] Implement DNS record provisioning (TXT, SRV records)
+  - `_ans._tcp.{agent_name}` SRV records for service discovery
+  - `{agent_name}` TXT records with capability metadata
+- [ ] Integrate with DNS providers (Route53, Cloudflare, etc.)
+- [ ] Add DNSSEC signing for record integrity
+- [ ] Implement DNS resolver in `/v1/resolve/{agent_name}` endpoint
+  - Query DNS first, fallback to database
+  - Cache DNS responses with TTL awareness
+- [ ] Support both API and DNS resolution methods
+
+**Benefits:** Decentralized discovery, reduced API load, standard internet protocols
+
+### Phase 2: Transparency Logs (High Priority)
+
+**Goal:** Implement cryptographically verifiable audit trail
+
+**Required Changes:**
+- [ ] Implement Merkle tree-based transparency log
+  - Each registration/rotation/revocation creates log entry
+  - Build Merkle tree with periodic checkpoints
+  - Publish tree roots and inclusion proofs
+- [ ] Add log verification endpoints:
+  - `GET /v1/log/entry/{entry_id}` - Retrieve log entry with proof
+  - `GET /v1/log/consistency/{old_root}/{new_root}` - Consistency proof
+  - `GET /v1/log/inclusion/{entry_id}/{root}` - Inclusion proof
+- [ ] Implement log monitoring:
+  - Periodic checkpoint publication (e.g., every hour)
+  - Monitor for log inconsistencies
+  - Provide log browser/explorer interface
+
+**Benefits:** Immutability, tamper detection, auditability, compliance
+
+### Phase 3: Domain Validation & Customer Verification (Medium Priority)
+
+**Goal:** Ensure legitimate ownership and prevent name squatting
+
+**Required Changes:**
+- [ ] Implement domain validation workflow
+  - Require agent names to match owned domains
+  - Integrate with domain registrars (WHOIS, DNS TXT records, Domain Connect API)
+  - Support validation via DNS TXT record challenge
+- [ ] Add customer verification workflow
+  - Multi-step registration: domain validation → customer verification → agent registration
+  - Store domain ownership proof in agent metadata
+  - Periodic re-validation of domain ownership
+- [ ] Implement domain-based access control
+  - Agents can only register under domains they own
+  - Support subdomain delegation (e.g., `*.agents.example.com`)
+
+**Benefits:** Prevents name squatting, ensures legitimate ownership, builds trust
+
+### Phase 4: Hybrid Certificate Architecture (Medium Priority)
+
+**Goal:** Separate public TLS and private identity certificates
+
+**Required Changes:**
+- [ ] Implement dual certificate model
+  - Public TLS certificate: For HTTPS/mTLS communication (standard CA)
+  - Private identity certificate: For agent-to-agent authentication (our CA)
+- [ ] Add certificate linking
+  - Store both certificate fingerprints in agent record
+  - Link public and private certs via metadata
+  - Support certificate chain validation for both
+- [ ] Enhance verification endpoint
+  - Verify public cert for transport security
+  - Verify private cert for agent identity
+  - Support both verification modes in API
+
+**Benefits:** Separation of concerns, compatibility with existing TLS infrastructure, stronger identity verification
+
+### Phase 5: Registration Authority (RA) Orchestration (Medium Priority)
+
+**Goal:** Add RA layer for validation and automation
+
+**Required Changes:**
+- [ ] Implement RA service layer
+  - RA validates requests before processing
+  - RA orchestrates multi-step workflows (domain validation, certificate issuance, DNS provisioning)
+  - RA handles policy enforcement and rate limiting
+- [ ] Add automated lifecycle management
+  - Automatic certificate renewal before expiry
+  - Proactive rotation reminders
+  - Automated revocation on domain expiration
+- [ ] Implement policy engine
+  - Configurable registration policies
+  - Rate limits per customer/domain
+  - Capability restrictions and validation
+
+**Benefits:** Operational automation, policy enforcement, reduced manual intervention
+
+### Phase 6: Scalability & Performance (High Priority)
+
+**Goal:** Support internet-scale deployment
+
+**Required Changes:**
+- [ ] Database scaling
+  - Read replicas for read-heavy operations (resolve, verify)
+  - Partitioning by agent name hash
+  - Separate audit log database (time-series optimized)
+- [ ] Caching layer
+  - Redis for hot agent metadata (resolve operations)
+  - Cache DNS responses with TTL
+  - Cache certificate chain validation results
+- [ ] Async processing
+  - Queue-based certificate issuance (don't block registration)
+  - Async DNS provisioning
+  - Background job for certificate renewal checks
+- [ ] CDN integration
+  - Serve public agent metadata via CDN
+  - Cache transparency log checkpoints
+  - Edge caching for resolve endpoints
+
+**Benefits:** High availability, low latency, horizontal scalability
+
+### Phase 7: Security Enhancements (High Priority)
+
+**Goal:** Production-grade security
+
+**Required Changes:**
+- [ ] Rate limiting and DDoS protection
+  - Per-IP rate limits on registration/verification
+  - Per-domain rate limits
+  - Integration with Cloudflare/AWS Shield
+- [ ] Key management
+  - HSM integration for CA private keys
+  - Key rotation for CA certificates
+  - Secure key storage (AWS KMS, HashiCorp Vault)
+- [ ] Certificate revocation
+  - Implement CRL (Certificate Revocation List)
+  - Support OCSP (Online Certificate Status Protocol)
+  - Real-time revocation checking
+- [ ] Monitoring and alerting
+  - Anomaly detection (unusual registration patterns)
+  - Failed verification monitoring
+  - Certificate expiry alerts
+
+**Benefits:** Protection against attacks, secure key management, real-time revocation
+
+### Phase 8: Standards Compliance (Low Priority)
+
+**Goal:** Align with emerging industry standards
+
+**Required Changes:**
+- [ ] IETF ANS draft compliance
+  - Align agent name format with IETF specifications
+  - Implement recommended DNS record types
+  - Support standard discovery protocols
+- [ ] OWASP GenAI ANS guidelines
+  - Follow security best practices from OWASP
+  - Implement recommended validation checks
+  - Support OWASP-defined metadata fields
+- [ ] A2A/MCP protocol integration
+  - Support agent-to-agent communication protocols
+  - Provide protocol-specific discovery endpoints
+  - Enable seamless agent interoperability
+
+**Benefits:** Industry alignment, interoperability, compliance
+
+### Implementation Priority
+
+**Immediate (High Impact, Moderate Effort):**
+1. DNS Integration (TXT records for discovery)
+2. Transparency Logs (Merkle trees)
+3. Domain Validation (prevent squatting)
+
+**Short-term (High Impact, Higher Effort):**
+4. Hybrid Certificates
+5. RA Orchestration Layer
+6. Database Scaling and Caching
+
+**Long-term (Foundation for Scale):**
+7. Full DNSSEC Integration
+8. HSM Key Management
+9. Standards Compliance (IETF, OWASP)
+
+### References
+
+- [GoDaddy's Agent Name Service Registry](https://www.godaddy.com/resources/news/building-trust-at-internet-scale-godaddys-agent-name-service-registry-for-the-agentic-ai-marketplace) - Production implementation reference
+- IETF ANS Draft - Emerging naming standards
+- OWASP GenAI ANS Guidelines - Security best practices
+- A2A/MCP Protocols - Agent-to-agent communication standards
+
+---
+
 ## Architecture Diagram
 
 ```mermaid
