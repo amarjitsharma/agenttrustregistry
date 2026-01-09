@@ -1,7 +1,9 @@
 """Agent lifecycle routes"""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from datetime import datetime, timedelta
+from typing import List, Optional
 from cryptography.hazmat.primitives import serialization
 
 from atr.core.db import get_db
@@ -11,6 +13,7 @@ from atr.core.schemas import (
     AgentResponse,
     AgentRotateResponse,
     AgentRevokeResponse,
+    AgentListResponse,
 )
 from atr.core.validators import validate_agent_name
 from atr.core.audit import log_audit_event, AuditEventType
@@ -19,6 +22,59 @@ from atr.pki.fingerprints import compute_fingerprint
 from atr.core.config import settings
 
 router = APIRouter(prefix="/v1/agents", tags=["agents"])
+
+
+@router.get("", response_model=AgentListResponse)
+def list_agents(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximum number of results"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    owner: Optional[str] = Query(default=None, description="Filter by owner"),
+    status: Optional[AgentStatus] = Query(default=None, description="Filter by status"),
+    capability: Optional[str] = Query(default=None, description="Filter by capability"),
+):
+    """List all agents with optional filtering and pagination"""
+    query = db.query(Agent)
+    
+    # Apply filters
+    if owner:
+        query = query.filter(Agent.owner == owner)
+    
+    if status:
+        query = query.filter(Agent.status == status)
+    
+    if capability:
+        # Filter agents that have the specified capability
+        query = query.filter(Agent.capabilities.contains([capability]))
+    
+    # Get total count before pagination
+    total = query.count()
+    
+    # Apply pagination
+    agents = query.order_by(Agent.created_at.desc()).offset(offset).limit(limit).all()
+    
+    # Convert to response format
+    agent_list = [
+        AgentResponse(
+            agent_name=agent.agent_name,
+            owner=agent.owner,
+            capabilities=agent.capabilities,
+            status=agent.status,
+            cert_fingerprint=agent.cert_fingerprint,
+            issued_at=agent.issued_at,
+            expires_at=agent.expires_at,
+            created_at=agent.created_at,
+            updated_at=agent.updated_at
+        )
+        for agent in agents
+    ]
+    
+    return AgentListResponse(
+        agents=agent_list,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)

@@ -63,3 +63,11 @@ class ResolveResponse(BaseModel):
     status: AgentStatus
     cert_fingerprint: str
     expires_at: datetime
+
+
+class AgentListResponse(BaseModel):
+    """List of agents with pagination metadata"""
+    agents: List[AgentResponse]
+    total: int
+    limit: int
+    offset: int
