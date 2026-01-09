@@ -565,6 +565,22 @@ Based on industry best practices and emerging standards (see [GoDaddy's Agent Na
 - OWASP GenAI ANS Guidelines - Security best practices
 - A2A/MCP Protocols - Agent-to-agent communication standards
 
+### Implementation Effort Estimate
+
+For detailed implementation planning, see [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) which includes:
+- Phase-by-phase effort breakdown
+- Timeline estimates (18-24 months total)
+- Team composition requirements (6-8 engineers)
+- Infrastructure costs ($1.5M - $2.5M total)
+- Risk mitigation strategies
+- Phased rollout recommendations
+
+**Quick Summary:**
+- **Total Timeline:** 18-24 months
+- **Team Size:** 6-8 full-time engineers
+- **Total Cost:** $1.5M - $2.5M
+- **Recommended Approach:** Phased MVP rollout (6 months) followed by iterative enhancements
+
 ---
 
 ## Architecture Diagram
