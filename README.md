@@ -76,9 +76,12 @@ Audit Event:
 
 ---
 
-## API Endpoints (initial)
+## API Endpoints
 
 ### Registry
+- `GET /v1/agents`  
+  List all agents with filtering and pagination
+  - Query params: `owner`, `status`, `capability`, `limit`, `offset`
 - `POST /v1/agents`  
   Register an agent + issue credentials
 - `GET /v1/agents/{agent_name}`  
@@ -124,6 +127,7 @@ uvicorn atr.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at `http://localhost:8000`
+- **Web UI**: `http://localhost:8000/` (interactive interface)
 - API docs: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/healthz`
 
@@ -135,6 +139,7 @@ docker-compose up --build
 ```
 
 The API will be available at `http://localhost:8000`
+- **Web UI**: `http://localhost:8000/` (interactive interface)
 
 **To use PostgreSQL instead of SQLite:**
 ```bash
@@ -144,6 +149,27 @@ docker-compose --profile postgres up --build
 # Set DATABASE_URL in your environment
 export DATABASE_URL=postgresql://atr:atr_password@localhost:5432/atr
 ```
+
+---
+
+## Web UI
+
+A modern web interface is available at the root endpoint (`http://localhost:8000/`) providing:
+
+- **Agent Browser**: View all registered agents with filtering capabilities
+  - Filter by owner, status, or capability
+  - Real-time agent status and certificate information
+  - Quick actions (rotate, revoke)
+
+- **Agent Registration**: Simple form to register new agents
+  - Input validation and error handling
+  - Success confirmation with certificate fingerprint
+
+- **Certificate Verification**: Verify agent certificates
+  - Paste certificate PEM for verification
+  - View verification results with detailed status
+
+The UI is a single-page application built with vanilla JavaScript, providing a clean and responsive interface for managing the Agent Trust Registry.
 
 ---
 
@@ -179,22 +205,40 @@ curl -X POST "http://localhost:8000/v1/agents" \
   }'
 ```
 
-**2. Get agent metadata:**
+**2. List all agents:**
+```bash
+# List all agents
+curl "http://localhost:8000/v1/agents"
+
+# Filter by owner
+curl "http://localhost:8000/v1/agents?owner=alice"
+
+# Filter by status
+curl "http://localhost:8000/v1/agents?status=active"
+
+# Filter by capability
+curl "http://localhost:8000/v1/agents?capability=translate"
+
+# Combine filters with pagination
+curl "http://localhost:8000/v1/agents?owner=alice&status=active&limit=20&offset=0"
+```
+
+**3. Get agent metadata:**
 ```bash
 curl "http://localhost:8000/v1/agents/my-agent.example"
 ```
 
-**3. Resolve agent:**
+**4. Resolve agent:**
 ```bash
 curl "http://localhost:8000/v1/resolve/my-agent.example"
 ```
 
-**4. Rotate certificate:**
+**5. Rotate certificate:**
 ```bash
 curl -X POST "http://localhost:8000/v1/agents/my-agent.example/rotate"
 ```
 
-**5. Verify certificate:**
+**6. Verify certificate:**
 ```bash
 # First, get the certificate PEM (from database or agent's storage)
 # Then verify it:
@@ -205,7 +249,7 @@ curl -X POST "http://localhost:8000/v1/verify/cert" \
   }'
 ```
 
-**6. Revoke agent:**
+**7. Revoke agent:**
 ```bash
 curl -X POST "http://localhost:8000/v1/agents/my-agent.example/revoke"
 ```
@@ -251,8 +295,10 @@ agent-trust-registry/
 │   │   ├── ca.py              # Certificate Authority
 │   │   ├── issue.py           # Certificate issuance
 │   │   └── fingerprints.py    # Fingerprint utilities
-│   └── cli/
-│       └── demo.py            # CLI demo script
+│   ├── cli/
+│   │   └── demo.py            # CLI demo script
+│   └── static/
+│       └── index.html         # Web UI (single-page application)
 ├── tests/
 │   ├── test_validators.py    # Validator tests
 │   ├── test_lifecycle.py     # Lifecycle tests
@@ -342,9 +388,10 @@ flowchart TB
   end
 
   subgraph ATR["Agent Trust Registry API (FastAPI)"]
-    AgentsAPI["Agents API\n/register /rotate /revoke /get"]
+    AgentsAPI["Agents API\n/list /register /rotate /revoke /get"]
     ResolveAPI["Resolve API\n/resolve/{agent_name}"]
     VerifyAPI["Verify API\n/verify/cert"]
+    WebUI["Web UI\n(interactive interface)"]
     AuditSvc["Audit Logger\n(register/rotate/revoke/verify)"]
   end
 
@@ -368,6 +415,7 @@ flowchart TB
 
   %% Flows
   CLI -->|Register/Rotate/Revoke| AgentsAPI
+  WebUI -->|Browse/Manage| AgentsAPI
   Agent -->|Present cert (PEM)\n(or mTLS in future)| VerifyAPI
 
   AgentsAPI --> Issuer
