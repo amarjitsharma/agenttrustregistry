@@ -1,15 +1,18 @@
 """FastAPI main application"""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
+from slowapi.errors import RateLimitExceeded
 
 from atr.core.db import Base, engine
 from atr.api.routes_agents import router as agents_router
 from atr.api.routes_verify import router as verify_router
 from atr.api.routes_health import router as health_router
 from atr.pki.ca import get_ca
+from atr.core.rate_limit import get_rate_limiter, limiter, _rate_limit_exceeded_handler
+from atr.core.config import settings
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -17,8 +20,13 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Agent Trust Registry",
     description="Proof-of-concept for agent identity and trust management",
-    version="0.1.0"
+    version="0.2.0"
 )
+
+# Rate limiting
+if settings.rate_limit_enabled:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware
 app.add_middleware(
@@ -54,7 +62,7 @@ def root():
         return FileResponse(ui_path)
     return {
         "service": "Agent Trust Registry",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "docs": "/docs",
         "ui": "/static/index.html"
     }

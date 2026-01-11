@@ -71,3 +71,10 @@ class AgentListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class AgentCertResponse(BaseModel):
+    """Agent certificate PEM response"""
+    agent_name: str
+    cert_pem: str
+    cert_fingerprint: str

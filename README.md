@@ -76,6 +76,19 @@ Audit Event:
 
 ---
 
+## v0.2 MVP Features
+
+**New in v0.2:**
+- ✅ **DNS Integration**: Basic TXT record provisioning (Route53, Cloudflare, or local)
+- ✅ **Redis Caching**: Agent metadata and DNS responses cached for improved performance
+- ✅ **Rate Limiting**: Per-IP rate limiting (configurable limits)
+- ✅ **API Authentication**: Basic API key authentication (optional)
+- ✅ **Production Infrastructure**: Redis support, improved error handling
+
+For detailed implementation roadmap, see [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+
+---
+
 ## API Endpoints
 
 ### Registry
@@ -108,6 +121,7 @@ Audit Event:
 ### Requirements
 - Python 3.11+
 - (Optional) Docker and docker-compose
+- (Optional) Redis (for caching and rate limiting in v0.2+)
 
 ### Local Setup
 
@@ -121,7 +135,46 @@ pip install -r requirements.txt
 2. **Initialize database:**
 The database will be created automatically on first run. For SQLite (default), no additional setup is needed.
 
-3. **Start the API server:**
+3. **Start Redis (optional, for v0.2+ features):**
+```bash
+# Using Docker
+docker run -d -p 6379:6379 redis:7-alpine
+
+# Or install Redis locally (varies by OS)
+# macOS: brew install redis && redis-server
+# Ubuntu: sudo apt-get install redis-server && redis-server
+```
+
+4. **Configure environment variables (optional):**
+Create a `.env` file for v0.2+ features:
+```bash
+# Redis (for caching and rate limiting)
+REDIS_URL=redis://localhost:6379/0
+REDIS_ENABLED=true
+
+# DNS Provider (optional - use "local" for development)
+DNS_PROVIDER=local
+# For Route53:
+# DNS_PROVIDER=route53
+# ROUTE53_HOSTED_ZONE_ID=your_zone_id
+# ROUTE53_AWS_ACCESS_KEY_ID=your_key
+# ROUTE53_AWS_SECRET_ACCESS_KEY=your_secret
+# ROUTE53_AWS_REGION=us-east-1
+# For Cloudflare:
+# DNS_PROVIDER=cloudflare
+# CLOUDFLARE_API_TOKEN=your_token
+# CLOUDFLARE_ZONE_ID=your_zone_id
+
+# Rate Limiting
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_PER_MINUTE=60
+RATE_LIMIT_PER_HOUR=1000
+
+# API Authentication (optional)
+API_KEY_ENABLED=false
+```
+
+5. **Start the API server:**
 ```bash
 uvicorn atr.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -133,13 +186,14 @@ The API will be available at `http://localhost:8000`
 
 ### Using Docker
 
-**Build and run with docker-compose:**
+**Build and run with docker-compose (includes Redis):**
 ```bash
 docker-compose up --build
 ```
 
 The API will be available at `http://localhost:8000`
 - **Web UI**: `http://localhost:8000/` (interactive interface)
+- Redis: `localhost:6379` (for caching and rate limiting)
 
 **To use PostgreSQL instead of SQLite:**
 ```bash
@@ -316,6 +370,7 @@ agent-trust-registry/
 
 Configuration is managed via environment variables or `.env` file:
 
+### Core Settings
 - `DATABASE_URL`: Database connection string (default: `sqlite:///./atr.db`)
 - `PKI_ROOT_DIR`: Directory for CA certificates (default: `./var/pki`)
 - `KEYS_ROOT_DIR`: Directory for agent private keys (default: `./var/keys`)
@@ -323,6 +378,32 @@ Configuration is managed via environment variables or `.env` file:
 - `PORT`: Server port (default: `8000`)
 - `CA_VALIDITY_DAYS`: CA certificate validity (default: `3650`)
 - `CERT_VALIDITY_DAYS`: Agent certificate validity (default: `30`)
+
+### v0.2 MVP Settings
+
+**Redis (Caching & Rate Limiting):**
+- `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379/0`)
+- `REDIS_ENABLED`: Enable Redis caching (default: `true`)
+
+**DNS Provider:**
+- `DNS_PROVIDER`: DNS provider type - `local`, `route53`, or `cloudflare` (default: `local`)
+- For Route53:
+  - `ROUTE53_HOSTED_ZONE_ID`: AWS Route53 hosted zone ID
+  - `ROUTE53_AWS_ACCESS_KEY_ID`: AWS access key ID
+  - `ROUTE53_AWS_SECRET_ACCESS_KEY`: AWS secret access key
+  - `ROUTE53_AWS_REGION`: AWS region (default: `us-east-1`)
+- For Cloudflare:
+  - `CLOUDFLARE_API_TOKEN`: Cloudflare API token
+  - `CLOUDFLARE_ZONE_ID`: Cloudflare zone ID
+
+**Rate Limiting:**
+- `RATE_LIMIT_ENABLED`: Enable rate limiting (default: `true`)
+- `RATE_LIMIT_PER_MINUTE`: Requests per minute per IP (default: `60`)
+- `RATE_LIMIT_PER_HOUR`: Requests per hour per IP (default: `1000`)
+
+**API Authentication:**
+- `API_KEY_ENABLED`: Enable API key authentication (default: `false`)
+- `API_KEY_HEADER`: Header name for API key (default: `X-API-Key`)
 
 ---
 

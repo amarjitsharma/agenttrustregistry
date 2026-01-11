@@ -1,5 +1,5 @@
 """Verification routes"""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime
 from cryptography import x509
@@ -11,8 +11,12 @@ from atr.core.schemas import VerifyCertRequest, VerifyCertResponse, ResolveRespo
 from atr.core.audit import log_audit_event, AuditEventType
 from atr.pki.fingerprints import compute_fingerprint
 from atr.pki.ca import get_ca
+from atr.core.cache import get_cache
+from atr.dns.providers import get_dns_provider
 
 router = APIRouter(prefix="/v1", tags=["verify"])
+cache = get_cache()
+dns_provider = get_dns_provider()
 
 
 @router.post("/verify/cert", response_model=VerifyCertResponse)
@@ -157,14 +161,59 @@ def verify_certificate(
 
 
 @router.get("/resolve/{agent_name}", response_model=ResolveResponse)
-def resolve_agent(agent_name: str, db: Session = Depends(get_db)):
-    """Resolve agent name to trust metadata"""
+def resolve_agent(agent_name: str, request: Request, db: Session = Depends(get_db)):
+    """Resolve agent name to trust metadata (supports DNS and cache)"""
+    # Check cache first
+    cache_key = f"resolve:{agent_name}"
+    cached = cache.get(cache_key)
+    if cached:
+        return ResolveResponse(**cached)
+    
+    # Try DNS first (if provider configured and not local)
+    try:
+        txt_records = dns_provider.get_txt_records(agent_name)
+        if txt_records:
+            # Parse DNS TXT records for fingerprint
+            for record in txt_records:
+                if record.startswith("fingerprint="):
+                    fingerprint = record.split("=", 1)[1]
+                    # Look up agent by fingerprint
+                    agent = db.query(Agent).filter(Agent.cert_fingerprint == fingerprint).first()
+                    if agent:
+                        response_data = {
+                            "agent_name": agent.agent_name,
+                            "owner": agent.owner,
+                            "capabilities": agent.capabilities,
+                            "status": agent.status.value,
+                            "cert_fingerprint": agent.cert_fingerprint,
+                            "expires_at": agent.expires_at
+                        }
+                        # Cache DNS response for TTL (300 seconds)
+                        cache.set(cache_key, response_data, ttl=300)
+                        return ResolveResponse(**response_data)
+    except Exception:
+        # DNS lookup failed, fall back to database
+        pass
+    
+    # Fall back to database lookup
     agent = db.query(Agent).filter(Agent.agent_name == agent_name).first()
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent '{agent_name}' not found"
         )
+    
+    response_data = {
+        "agent_name": agent.agent_name,
+        "owner": agent.owner,
+        "capabilities": agent.capabilities,
+        "status": agent.status.value,
+        "cert_fingerprint": agent.cert_fingerprint,
+        "expires_at": agent.expires_at
+    }
+    
+    # Cache for 5 minutes
+    cache.set(cache_key, response_data, ttl=300)
     
     return ResolveResponse(
         agent_name=agent.agent_name,

@@ -9,14 +9,35 @@ services:
       - DATABASE_URL=sqlite:///./atr.db
       - PKI_ROOT_DIR=./var/pki
       - KEYS_ROOT_DIR=./var/keys
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_ENABLED=true
+      - DNS_PROVIDER=local
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_PER_MINUTE=60
+      - RATE_LIMIT_PER_HOUR=1000
+      - API_KEY_ENABLED=false
     volumes:
       - ./var:/app/var
       - ./atr.db:/app/atr.db
+    depends_on:
+      - redis
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Optional PostgreSQL service
   postgres:
@@ -34,3 +55,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

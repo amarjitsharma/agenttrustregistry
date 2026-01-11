@@ -273,9 +273,9 @@
         </div>
 
         <div class="tabs">
-            <button class="tab active" onclick="showTab('agents')">All Agents</button>
-            <button class="tab" onclick="showTab('register')">Register Agent</button>
-            <button class="tab" onclick="showTab('verify')">Verify Certificate</button>
+            <button class="tab active" onclick="showTab('agents', event)">All Agents</button>
+            <button class="tab" onclick="showTab('register', event)">Register Agent</button>
+            <button class="tab" onclick="showTab('verify', event)">Verify Certificate</button>
         </div>
 
         <div class="content">
@@ -332,7 +332,7 @@
     <script>
         const API_BASE = 'http://localhost:8000/v1';
 
-        function showTab(tabName) {
+        function showTab(tabName, event) {
             // Hide all tabs
             document.querySelectorAll('[id$="-tab"]').forEach(tab => {
                 tab.classList.add('hidden');
@@ -345,7 +345,16 @@
             
             // Show selected tab
             document.getElementById(tabName + '-tab').classList.remove('hidden');
-            event.target.classList.add('active');
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                // Find the button and activate it
+                document.querySelectorAll('.tab').forEach(btn => {
+                    if (btn.textContent.toLowerCase().includes(tabName)) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
             
             // Load data if needed
             if (tabName === 'agents') {
@@ -403,6 +412,7 @@
                     <div class="capabilities">${capabilities}</div>
                     <div class="fingerprint">${agent.cert_fingerprint}</div>
                     <div class="actions">
+                        <button class="btn btn-secondary" onclick="getAgentCert('${agent.agent_name}')">Get Certificate</button>
                         <button class="btn btn-secondary" onclick="rotateAgent('${agent.agent_name}')">Rotate</button>
                         ${agent.status === 'active' ? `<button class="btn btn-danger" onclick="revokeAgent('${agent.agent_name}')">Revoke</button>` : ''}
                     </div>
@@ -483,6 +493,41 @@
                     loadAgents();
                 } else {
                     alert(`Error: ${data.detail || 'Revocation failed'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function getAgentCert(agentName) {
+            try {
+                const response = await fetch(`${API_BASE}/agents/${encodeURIComponent(agentName)}/cert`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Set certificate in the verify form and switch to verify tab
+                    document.getElementById('cert-pem').value = data.cert_pem;
+                    showTab('verify', null);
+                    
+                    // Try to copy to clipboard (optional, don't fail if it doesn't work)
+                    try {
+                        await navigator.clipboard.writeText(data.cert_pem);
+                        // Show success message briefly
+                        const alertDiv = document.getElementById('verify-alert');
+                        alertDiv.innerHTML = '<div class="alert alert-success">Certificate loaded! Click "Verify Certificate" to verify.</div>';
+                        setTimeout(() => {
+                            alertDiv.innerHTML = '';
+                        }, 3000);
+                    } catch (clipboardError) {
+                        // Clipboard failed, but that's okay - we've set the value
+                        const alertDiv = document.getElementById('verify-alert');
+                        alertDiv.innerHTML = '<div class="alert alert-success">Certificate loaded! Click "Verify Certificate" to verify.</div>';
+                        setTimeout(() => {
+                            alertDiv.innerHTML = '';
+                        }, 3000);
+                    }
+                } else {
+                    alert(`Error: ${data.detail || 'Failed to get certificate'}`);
                 }
             } catch (error) {
                 alert(`Error: ${error.message}`);

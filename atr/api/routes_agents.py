@@ -1,10 +1,11 @@
 """Agent lifecycle routes"""
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from datetime import datetime, timedelta
 from typing import List, Optional
 from cryptography.hazmat.primitives import serialization
+from slowapi import Limiter
 
 from atr.core.db import get_db
 from atr.core.models import Agent, AgentStatus
@@ -14,14 +15,21 @@ from atr.core.schemas import (
     AgentRotateResponse,
     AgentRevokeResponse,
     AgentListResponse,
+    AgentCertResponse,
 )
 from atr.core.validators import validate_agent_name
 from atr.core.audit import log_audit_event, AuditEventType
 from atr.pki.issue import issue_agent_certificate
 from atr.pki.fingerprints import compute_fingerprint
 from atr.core.config import settings
+from atr.core.cache import get_cache
+from atr.core.rate_limit import get_rate_limiter
+from atr.dns.providers import get_dns_provider
 
 router = APIRouter(prefix="/v1/agents", tags=["agents"])
+limiter = get_rate_limiter()
+cache = get_cache()
+dns_provider = get_dns_provider()
 
 
 @router.get("", response_model=AgentListResponse)
@@ -128,6 +136,17 @@ def register_agent(
     db.commit()
     db.refresh(agent)
     
+    # Create DNS TXT record (if DNS provider is configured)
+    try:
+        dns_value = f"fingerprint={fingerprint}"
+        dns_provider.create_txt_record(request.agent_name, dns_value, ttl=300)
+    except Exception:
+        # DNS provisioning is best-effort, don't fail registration
+        pass
+    
+    # Invalidate cache
+    cache.delete(f"agent:{request.agent_name}")
+    
     # Audit log
     log_audit_event(
         db,
@@ -149,15 +168,53 @@ def register_agent(
     )
 
 
-@router.get("/{agent_name}", response_model=AgentResponse)
-def get_agent(agent_name: str, db: Session = Depends(get_db)):
-    """Get agent trust metadata"""
+@router.get("/{agent_name}/cert", response_model=AgentCertResponse)
+def get_agent_certificate(agent_name: str, db: Session = Depends(get_db)):
+    """Get agent certificate PEM (for verification purposes)"""
     agent = db.query(Agent).filter(Agent.agent_name == agent_name).first()
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent '{agent_name}' not found"
         )
+    
+    return AgentCertResponse(
+        agent_name=agent.agent_name,
+        cert_pem=agent.cert_pem,
+        cert_fingerprint=agent.cert_fingerprint
+    )
+
+
+@router.get("/{agent_name}", response_model=AgentResponse)
+def get_agent(agent_name: str, request: Request, db: Session = Depends(get_db)):
+    """Get agent trust metadata (cached)"""
+    # Check cache first
+    cache_key = f"agent:{agent_name}"
+    cached = cache.get(cache_key)
+    if cached:
+        return AgentResponse(**cached)
+    
+    agent = db.query(Agent).filter(Agent.agent_name == agent_name).first()
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent '{agent_name}' not found"
+        )
+    
+    response_data = {
+        "agent_name": agent.agent_name,
+        "owner": agent.owner,
+        "capabilities": agent.capabilities,
+        "status": agent.status.value,
+        "cert_fingerprint": agent.cert_fingerprint,
+        "issued_at": agent.issued_at,
+        "expires_at": agent.expires_at,
+        "created_at": agent.created_at,
+        "updated_at": agent.updated_at
+    }
+    
+    # Cache for 5 minutes
+    cache.set(cache_key, response_data, ttl=300)
     
     return AgentResponse(
         agent_name=agent.agent_name,
@@ -210,6 +267,18 @@ def rotate_agent_certificate(agent_name: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(agent)
     
+    # Update DNS TXT record
+    try:
+        dns_value = f"fingerprint={new_fingerprint}"
+        dns_provider.create_txt_record(agent_name, dns_value, ttl=300)
+    except Exception:
+        # DNS update is best-effort
+        pass
+    
+    # Invalidate cache
+    cache.delete(f"agent:{agent_name}")
+    cache.delete(f"resolve:{agent_name}")
+    
     # Audit log
     log_audit_event(
         db,
@@ -249,12 +318,16 @@ def revoke_agent(agent_name: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(agent)
     
+    # Invalidate cache
+    cache.delete(f"agent:{agent_name}")
+    cache.delete(f"resolve:{agent_name}")
+    
     # Audit log
     log_audit_event(
         db,
         AuditEventType.REVOKE,
         agent_name=agent_name,
-        metadata={"fingerprint": agent.cert_fingerprint}
+        metadata={"fingerprint": agent.cert_fingerprint, "reason": "manual_revocation"}
     )
     
     return AgentRevokeResponse(
