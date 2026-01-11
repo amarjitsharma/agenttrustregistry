@@ -326,6 +326,28 @@
                 </div>
                 <button class="btn" onclick="verifyCertificate()">Verify Certificate</button>
             </div>
+
+            <!-- Transparency Log Tab -->
+            <div id="transparency-tab" class="hidden">
+                <h2>Transparency Log</h2>
+                <div style="margin-bottom: 20px;">
+                    <div class="info" style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                        <strong>Latest Root Hash:</strong> <span id="log-root-hash" style="font-family: monospace;">Loading...</span>
+                    </div>
+                    <div class="filters">
+                        <input type="text" id="log-filter-agent" placeholder="Filter by agent name...">
+                        <select id="log-filter-event">
+                            <option value="">All Events</option>
+                            <option value="register">Register</option>
+                            <option value="rotate">Rotate</option>
+                            <option value="revoke">Revoke</option>
+                            <option value="verify">Verify</option>
+                        </select>
+                        <button class="btn" onclick="loadLogEntries()">Refresh</button>
+                    </div>
+                </div>
+                <div id="log-entries-container"></div>
+            </div>
         </div>
     </div>
 
@@ -359,6 +381,8 @@
             // Load data if needed
             if (tabName === 'agents') {
                 loadAgents();
+            } else if (tabName === 'transparency') {
+                loadLogEntries();
             }
         }
 

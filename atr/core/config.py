@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     api_key_enabled: bool = False  # Enable API key authentication
     api_key_header: str = "X-API-Key"
     
+    # Transparency log settings (v0.3)
+    transparency_log_enabled: bool = True
+    
+    # Domain validation settings (v0.3)
+    domain_validation_enabled: bool = False
+    
+    # Async processing settings (v0.3)
+    async_processing_enabled: bool = False  # For now, disabled by default
+    
     model_config = {
         "env_file": ".env",
         "case_sensitive": False

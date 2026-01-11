@@ -10,6 +10,7 @@ from atr.core.db import Base, engine
 from atr.api.routes_agents import router as agents_router
 from atr.api.routes_verify import router as verify_router
 from atr.api.routes_health import router as health_router
+from atr.api.routes_transparency import router as transparency_router
 from atr.pki.ca import get_ca
 from atr.core.rate_limit import get_rate_limiter, limiter, _rate_limit_exceeded_handler
 from atr.core.config import settings
@@ -20,7 +21,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Agent Trust Registry",
     description="Proof-of-concept for agent identity and trust management",
-    version="0.2.0"
+    version="0.3.0"
 )
 
 # Rate limiting
@@ -41,6 +42,7 @@ app.add_middleware(
 app.include_router(agents_router)
 app.include_router(verify_router)
 app.include_router(health_router)
+app.include_router(transparency_router)  # v0.3: Transparency log
 
 # Serve static files (UI)
 static_dir = Path(__file__).parent / "static"
@@ -62,7 +64,7 @@ def root():
         return FileResponse(ui_path)
     return {
         "service": "Agent Trust Registry",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "docs": "/docs",
         "ui": "/static/index.html"
     }

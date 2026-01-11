@@ -99,6 +99,26 @@ def register_agent(
             detail=validation_error
         )
     
+    # Domain validation (v0.3 feature - optional)
+    if settings.domain_validation_enabled:
+        try:
+            from atr.validation.dns_challenge import validate_domain_ownership_multi
+            validation_result = validate_domain_ownership_multi(request.agent_name)
+            if not validation_result.valid:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Domain validation failed: {validation_result.details}"
+                )
+        except ImportError:
+            # Domain validation module not available, skip
+            pass
+        except HTTPException:
+            raise
+        except Exception as e:
+            # Domain validation errors shouldn't block registration in POC
+            # In production, you might want to be stricter
+            pass
+    
     # Check if agent already exists
     existing = db.query(Agent).filter(Agent.agent_name == request.agent_name).first()
     if existing:

@@ -78,3 +78,34 @@ class AgentCertResponse(BaseModel):
     agent_name: str
     cert_pem: str
     cert_fingerprint: str
+
+
+# v0.3: Transparency Log Schemas
+class LogEntryResponse(BaseModel):
+    """Transparency log entry response"""
+    entry_index: int
+    event_type: str
+    agent_name: Optional[str]
+    event_data: Dict[str, Any]
+    entry_hash: str
+    tree_root_hash: Optional[str]
+    created_at: datetime
+
+
+class LogEntryListResponse(BaseModel):
+    """List of log entries with pagination"""
+    entries: List[LogEntryResponse]
+    total: int
+    limit: int
+    offset: int
+    latest_root_hash: Optional[str]
+
+
+class InclusionProofResponse(BaseModel):
+    """Inclusion proof response"""
+    entry_index: int
+    entry_hash: str
+    root_hash: str
+    proof: List[str]
+    tree_size: int
+    verified: bool

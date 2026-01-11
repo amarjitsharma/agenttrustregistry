@@ -76,9 +76,27 @@ Audit Event:
 
 ---
 
-## v0.2 MVP Features
+## Version Features
 
-**New in v0.2:**
+### v0.3: Trust & Discovery (Current)
+
+**New in v0.3:**
+- ✅ **Transparency Logs**: Merkle tree-based cryptographic audit trail
+  - Automatic logging of all operations (register, rotate, revoke, verify)
+  - Inclusion proof generation and verification
+  - Log browser UI for viewing entries
+  - API endpoints for log access and proofs
+- ✅ **Domain Validation**: Ownership verification framework
+  - WHOIS integration (basic)
+  - DNS TXT challenge validation
+  - Multi-method validation workflow
+- ✅ **Async Processing**: Background task framework (foundation)
+  - Certificate issuance queue structure
+  - Background worker framework
+
+### v0.2: MVP Launch
+
+**Features:**
 - ✅ **DNS Integration**: Basic TXT record provisioning (Route53, Cloudflare, or local)
 - ✅ **Redis Caching**: Agent metadata and DNS responses cached for improved performance
 - ✅ **Rate Limiting**: Per-IP rate limiting (configurable limits)
@@ -404,6 +422,17 @@ Configuration is managed via environment variables or `.env` file:
 **API Authentication:**
 - `API_KEY_ENABLED`: Enable API key authentication (default: `false`)
 - `API_KEY_HEADER`: Header name for API key (default: `X-API-Key`)
+
+### v0.3 Settings
+
+**Transparency Log:**
+- `TRANSPARENCY_LOG_ENABLED`: Enable transparency log (default: `true`)
+
+**Domain Validation:**
+- `DOMAIN_VALIDATION_ENABLED`: Enable domain validation (default: `false`)
+
+**Async Processing:**
+- `ASYNC_PROCESSING_ENABLED`: Enable async processing (default: `false`)
 
 ---
 
