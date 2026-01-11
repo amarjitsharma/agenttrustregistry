@@ -1,6 +1,5 @@
 """DNS TXT challenge validation for domain ownership"""
 import dns.resolver
-import dns.name
 from typing import Optional
 import time
 
