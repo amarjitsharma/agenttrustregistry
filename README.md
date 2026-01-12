@@ -78,7 +78,43 @@ Audit Event:
 
 ## Version Features
 
-### v0.3: Trust & Discovery (Current)
+### v0.4: Enterprise Features (Current)
+
+**New in v0.4:**
+
+**Phase 4: Hybrid Certificate Architecture**
+- ✅ **Dual Certificate Model**: Support for both private and public certificates
+  - Private CA-issued certificates (existing)
+  - Public TLS certificates via ACME/Let's Encrypt (foundation)
+  - Certificate type tracking (PRIVATE, PUBLIC, DUAL)
+  - Certificate linking and validation
+- ✅ **Enhanced Verification**: Support for verifying both certificate types
+  - Private certificate verification (chains to local CA)
+  - Public certificate verification (linked to agent)
+  - Dual certificate validation
+
+**Phase 5: RA Orchestration**
+- ✅ **RA Service Layer**: Registration Authority service abstraction
+  - Clean service interface for agent lifecycle management
+  - Integrated with DNS provisioning and caching
+  - Audit logging integration
+- ✅ **Workflow Engine**: Simplified multi-step workflow orchestration
+  - Step-based workflow execution
+  - Error handling and rollback support
+  - Optional vs required steps
+  - Workflow context management
+- ✅ **Policy Engine**: Rule-based policy evaluation
+  - Configurable policy rules
+  - Default policies (agent name, owner validation)
+  - Priority-based rule ordering
+  - Actions: Allow, Deny, Warn, Require
+- ✅ **Certificate Renewal Automation**: Automated lifecycle management
+  - Expiring certificate detection
+  - Batch renewal support
+  - Configurable renewal window
+  - Dry-run capability
+
+### v0.3: Trust & Discovery
 
 **New in v0.3:**
 - ✅ **Transparency Logs**: Merkle tree-based cryptographic audit trail
@@ -242,6 +278,197 @@ A modern web interface is available at the root endpoint (`http://localhost:8000
   - View verification results with detailed status
 
 The UI is a single-page application built with vanilla JavaScript, providing a clean and responsive interface for managing the Agent Trust Registry.
+
+---
+
+## Using the RA Service (v0.4)
+
+The Registration Authority (RA) service provides a clean programmatic interface for agent lifecycle management. This is useful for:
+- Building custom integrations
+- Automated agent management
+- Workflow orchestration
+- Policy enforcement
+
+### Basic Usage
+
+```python
+from atr.core.db import SessionLocal
+from atr.ra.service import RegistrationAuthority
+
+# Get database session
+db = SessionLocal()
+
+# Create RA service instance
+ra = RegistrationAuthority(db)
+
+# Register an agent
+agent = ra.register_agent(
+    agent_name="my-agent.example",
+    owner="user@example.com",
+    capabilities=["read", "write"],
+    request_public_cert=False  # Set to True to also request public cert
+)
+
+print(f"Agent registered: {agent.agent_name}")
+print(f"Certificate fingerprint: {agent.cert_fingerprint}")
+print(f"Certificate type: {agent.cert_type}")
+
+# Rotate certificate
+updated_agent = ra.rotate_certificate("my-agent.example")
+print(f"New fingerprint: {updated_agent.cert_fingerprint}")
+
+# Revoke agent
+revoked_agent = ra.revoke_agent("my-agent.example")
+print(f"Agent status: {revoked_agent.status}")
+
+db.close()
+```
+
+### Using the Workflow Engine
+
+```python
+from atr.ra.workflow import (
+    WorkflowEngine, WorkflowContext, WorkflowStep,
+    get_workflow_engine
+)
+
+# Get workflow engine
+engine = get_workflow_engine()
+
+# Define workflow steps
+def validate_step(context):
+    # Validate agent name
+    agent_name = context.data.get("agent_name")
+    if not agent_name:
+        raise ValueError("Agent name required")
+    return {"validated": True}
+
+def register_step(context):
+    # Register agent using RA service
+    from atr.core.db import SessionLocal
+    from atr.ra.service import RegistrationAuthority
+    
+    db = SessionLocal()
+    ra = RegistrationAuthority(db)
+    
+    agent = ra.register_agent(
+        agent_name=context.data["agent_name"],
+        owner=context.data["owner"],
+        capabilities=context.data.get("capabilities", [])
+    )
+    
+    context.results["agent"] = {
+        "name": agent.agent_name,
+        "fingerprint": agent.cert_fingerprint
+    }
+    db.close()
+    return {"registered": True}
+
+# Register workflow
+steps = [
+    WorkflowStep(name="validate", handler=validate_step, required=True),
+    WorkflowStep(name="register", handler=register_step, required=True),
+]
+
+engine.register_workflow("agent_registration", steps)
+
+# Execute workflow
+context = WorkflowContext(
+    workflow_id="wf-123",
+    data={
+        "agent_name": "workflow-agent.example",
+        "owner": "user@example.com",
+        "capabilities": ["read"]
+    }
+)
+
+result = engine.execute_workflow("agent_registration", context)
+print(f"Workflow status: {result['status']}")
+print(f"Results: {result['results']}")
+```
+
+### Using the Policy Engine
+
+```python
+from atr.ra.policy import PolicyEngine, PolicyRule, PolicyAction, get_policy_engine
+
+# Get policy engine (includes default rules)
+engine = get_policy_engine()
+
+# Add custom policy rule
+def check_capability_limit(context):
+    capabilities = context.get("capabilities", [])
+    return len(capabilities) > 5  # Deny if more than 5 capabilities
+
+custom_rule = PolicyRule(
+    name="capability_limit",
+    action=PolicyAction.DENY,
+    condition=check_capability_limit,
+    message="Maximum 5 capabilities allowed",
+    priority=50
+)
+
+engine.add_rule(custom_rule)
+
+# Evaluate policy
+context = {
+    "agent_name": "test-agent.example",
+    "owner": "user@example.com",
+    "capabilities": ["read", "write", "delete", "admin", "view", "edit"]  # 6 capabilities
+}
+
+result = engine.evaluate(context)
+
+if result.denied:
+    print(f"Registration denied: {result.messages}")
+else:
+    print("Registration allowed")
+    if result.warnings:
+        print(f"Warnings: {result.warnings}")
+```
+
+### Certificate Renewal Automation
+
+```python
+from atr.core.db import SessionLocal
+from atr.ra.renewal import CertificateRenewalService
+
+# Get database session
+db = SessionLocal()
+
+# Create renewal service
+renewal = CertificateRenewalService(db)
+
+# Find certificates expiring soon (within 7 days)
+expiring = renewal.find_certificates_expiring_soon(days_ahead=7)
+print(f"Found {len(expiring)} certificates expiring soon")
+
+# Renew a specific certificate
+result = renewal.renew_certificate("my-agent.example")
+if result["success"]:
+    print(f"Renewed: {result['new_fingerprint']}")
+else:
+    print(f"Failed: {result['error']}")
+
+# Batch renew all expiring certificates (dry run)
+dry_run_result = renewal.renew_expiring_certificates(
+    days_ahead=7,
+    dry_run=True
+)
+print(f"Would renew {dry_run_result['total_found']} certificates")
+
+# Actually renew (remove dry_run=True)
+renewal_result = renewal.renew_expiring_certificates(
+    days_ahead=7,
+    dry_run=False
+)
+print(f"Renewed {len(renewal_result['renewed'])} certificates")
+print(f"Failed {len(renewal_result['failed'])} certificates")
+
+db.close()
+```
+
+See `examples/ra_service_example.py` for a complete working example.
 
 ---
 
@@ -433,6 +660,24 @@ Configuration is managed via environment variables or `.env` file:
 
 **Async Processing:**
 - `ASYNC_PROCESSING_ENABLED`: Enable async processing (default: `false`)
+
+### v0.4 Settings
+
+**Hybrid Certificate Architecture (Phase 4):**
+- `ACME_ENABLED`: Enable public certificate issuance via ACME (default: `false`)
+- `ACME_ACCOUNT_EMAIL`: Email for ACME account registration
+- `ACME_DIRECTORY_URL`: ACME directory URL (default: Let's Encrypt staging)
+- `ACME_USE_STAGING`: Use staging environment (default: `true`)
+
+**OCSP:**
+- `OCSP_ENABLED`: Enable OCSP responder (default: `true`)
+
+**RA Orchestration (Phase 5):**
+- `RA_WORKFLOW_ENABLED`: Enable workflow engine (default: `true`)
+- `RA_POLICY_ENABLED`: Enable policy engine (default: `true`)
+- `CERTIFICATE_RENEWAL_ENABLED`: Enable automated certificate renewal (default: `false`)
+- `CERTIFICATE_RENEWAL_DAYS_AHEAD`: Days before expiry to renew (default: `7`)
+- `CERTIFICATE_RENEWAL_CHECK_INTERVAL`: Check interval in seconds (default: `3600`)
 
 ---
 

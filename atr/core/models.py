@@ -13,6 +13,13 @@ class AgentStatus(str, enum.Enum):
     REVOKED = "revoked"
 
 
+class CertificateType(str, enum.Enum):
+    """Certificate type enumeration (v0.4: Hybrid Certificate Architecture)"""
+    PRIVATE = "private"  # Private CA-issued certificate (default)
+    PUBLIC = "public"   # Public CA-issued certificate (Let's Encrypt, etc.)
+    DUAL = "dual"       # Both private and public certificates
+
+
 class Agent(Base):
     """Agent registry model"""
     __tablename__ = "agents"
@@ -21,10 +28,23 @@ class Agent(Base):
     owner = Column(String(255), nullable=False)
     capabilities = Column(JSON, default=list)
     status = Column(SQLEnum(AgentStatus), default=AgentStatus.ACTIVE, nullable=False)
+    
+    # Private certificate fields (existing)
     cert_fingerprint = Column(String(64), nullable=False, index=True)
+    cert_serial_number = Column(String(64), nullable=True, index=True)  # v0.4: For OCSP
     cert_pem = Column(Text, nullable=False)
     issued_at = Column(DateTime, nullable=False)
     expires_at = Column(DateTime, nullable=False)
+    
+    # v0.4: Public certificate fields (optional, for hybrid architecture)
+    cert_type = Column(SQLEnum(CertificateType), default=CertificateType.PRIVATE, nullable=False)
+    public_cert_fingerprint = Column(String(64), nullable=True, index=True)
+    public_cert_pem = Column(Text, nullable=True)
+    public_cert_serial_number = Column(String(64), nullable=True, index=True)
+    public_cert_issued_at = Column(DateTime, nullable=True)
+    public_cert_expires_at = Column(DateTime, nullable=True)
+    public_cert_issuer = Column(String(255), nullable=True)  # e.g., "Let's Encrypt"
+    
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

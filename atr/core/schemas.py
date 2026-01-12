@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from atr.core.models import AgentStatus
+from atr.core.models import AgentStatus, CertificateType
 
 
 class AgentRegisterRequest(BaseModel):
@@ -11,6 +11,7 @@ class AgentRegisterRequest(BaseModel):
     agent_name: str = Field(..., description="Agent name (DNS-label format)")
     owner: str = Field(..., description="Owner identifier")
     capabilities: List[str] = Field(default_factory=list, description="List of capabilities")
+    request_public_cert: bool = Field(default=False, description="Request public TLS certificate (Let's Encrypt) - v0.4")
 
 
 class AgentResponse(BaseModel):
@@ -20,8 +21,16 @@ class AgentResponse(BaseModel):
     capabilities: List[str]
     status: AgentStatus
     cert_fingerprint: str
+    cert_serial_number: Optional[str] = None  # v0.4: For OCSP
+    cert_type: CertificateType = CertificateType.PRIVATE  # v0.4: Certificate type
     issued_at: datetime
     expires_at: datetime
+    # v0.4: Public certificate fields (optional)
+    public_cert_fingerprint: Optional[str] = None
+    public_cert_serial_number: Optional[str] = None
+    public_cert_issued_at: Optional[datetime] = None
+    public_cert_expires_at: Optional[datetime] = None
+    public_cert_issuer: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

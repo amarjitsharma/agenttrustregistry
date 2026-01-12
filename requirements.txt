@@ -15,3 +15,7 @@ slowapi>=0.1.9
 dnspython>=2.4.0
 boto3>=1.28.0  # AWS Route53
 cloudflare>=2.11.0  # Cloudflare API
+
+# v0.4: Hybrid Certificate Architecture
+acme>=2.7.0  # ACME protocol for Let's Encrypt
+certbot>=2.7.0  # Let's Encrypt client (optional, for CLI tools)

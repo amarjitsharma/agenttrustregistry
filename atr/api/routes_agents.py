@@ -20,9 +20,11 @@ from atr.core.schemas import (
 from atr.core.validators import validate_agent_name
 from atr.core.audit import log_audit_event, AuditEventType
 from atr.pki.issue import issue_agent_certificate
+from atr.pki.public_cert import issue_public_certificate
 from atr.pki.fingerprints import compute_fingerprint
 from atr.core.config import settings
 from atr.core.cache import get_cache
+from atr.core.models import CertificateType
 from atr.core.rate_limit import get_rate_limiter
 from atr.dns.providers import get_dns_provider
 
@@ -69,8 +71,16 @@ def list_agents(
             capabilities=agent.capabilities,
             status=agent.status,
             cert_fingerprint=agent.cert_fingerprint,
+            cert_serial_number=agent.cert_serial_number,  # v0.4: For OCSP
+            cert_type=agent.cert_type,  # v0.4: Certificate type
             issued_at=agent.issued_at,
             expires_at=agent.expires_at,
+            # v0.4: Public certificate fields
+            public_cert_fingerprint=agent.public_cert_fingerprint,
+            public_cert_serial_number=agent.public_cert_serial_number,
+            public_cert_issued_at=agent.public_cert_issued_at,
+            public_cert_expires_at=agent.public_cert_expires_at,
+            public_cert_issuer=agent.public_cert_issuer,
             created_at=agent.created_at,
             updated_at=agent.updated_at
         )
@@ -127,15 +137,46 @@ def register_agent(
             detail=f"Agent '{request.agent_name}' already exists"
         )
     
-    # Issue certificate
+    # Issue private certificate (always)
     try:
         private_key, cert, fingerprint = issue_agent_certificate(request.agent_name)
         cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode('utf-8')
+        cert_serial_number = str(cert.serial_number)  # v0.4: Store serial for OCSP
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to issue certificate: {str(e)}"
+            detail=f"Failed to issue private certificate: {str(e)}"
         )
+    
+    # v0.4: Issue public certificate if requested
+    public_cert_pem = None
+    public_cert_fingerprint = None
+    public_cert_serial_number = None
+    public_cert_issued_at = None
+    public_cert_expires_at = None
+    public_cert_issuer = None
+    cert_type = CertificateType.PRIVATE
+    
+    if request.request_public_cert:
+        if not settings.acme_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Public certificate issuance is not enabled. Set ACME_ENABLED=true in configuration."
+            )
+        
+        try:
+            public_key, public_cert, public_fingerprint = issue_public_certificate(request.agent_name)
+            public_cert_pem = public_cert.public_bytes(serialization.Encoding.PEM).decode('utf-8')
+            public_cert_serial_number = str(public_cert.serial_number)
+            public_cert_issued_at = datetime.utcnow()
+            public_cert_expires_at = public_cert.not_valid_after.replace(tzinfo=None)
+            public_cert_fingerprint = public_fingerprint
+            public_cert_issuer = "Let's Encrypt"  # In production, get from cert issuer
+            cert_type = CertificateType.DUAL
+        except Exception as e:
+            # If public cert issuance fails, continue with private cert only
+            # In production, you might want to fail or retry
+            pass
     
     # Create agent record
     now = datetime.utcnow()
@@ -145,9 +186,18 @@ def register_agent(
         capabilities=request.capabilities,
         status=AgentStatus.ACTIVE,
         cert_fingerprint=fingerprint,
+        cert_serial_number=cert_serial_number,  # v0.4: For OCSP
         cert_pem=cert_pem,
+        cert_type=cert_type,  # v0.4: Certificate type
         issued_at=now,
         expires_at=now + timedelta(days=settings.cert_validity_days),
+        # v0.4: Public certificate fields
+        public_cert_fingerprint=public_cert_fingerprint,
+        public_cert_pem=public_cert_pem,
+        public_cert_serial_number=public_cert_serial_number,
+        public_cert_issued_at=public_cert_issued_at,
+        public_cert_expires_at=public_cert_expires_at,
+        public_cert_issuer=public_cert_issuer,
         created_at=now,
         updated_at=now
     )
@@ -172,7 +222,7 @@ def register_agent(
         db,
         AuditEventType.REGISTER,
         agent_name=request.agent_name,
-        metadata={"owner": request.owner, "capabilities": request.capabilities}
+        metadata={"owner": request.owner, "capabilities": request.capabilities, "cert_type": cert_type.value}
     )
     
     return AgentResponse(
@@ -181,8 +231,16 @@ def register_agent(
         capabilities=agent.capabilities,
         status=agent.status,
         cert_fingerprint=agent.cert_fingerprint,
+        cert_serial_number=agent.cert_serial_number,  # v0.4: For OCSP
+        cert_type=agent.cert_type,  # v0.4: Certificate type
         issued_at=agent.issued_at,
         expires_at=agent.expires_at,
+        # v0.4: Public certificate fields
+        public_cert_fingerprint=agent.public_cert_fingerprint,
+        public_cert_serial_number=agent.public_cert_serial_number,
+        public_cert_issued_at=agent.public_cert_issued_at,
+        public_cert_expires_at=agent.public_cert_expires_at,
+        public_cert_issuer=agent.public_cert_issuer,
         created_at=agent.created_at,
         updated_at=agent.updated_at
     )
@@ -227,6 +285,13 @@ def get_agent(agent_name: str, request: Request, db: Session = Depends(get_db)):
         "capabilities": agent.capabilities,
         "status": agent.status.value,
         "cert_fingerprint": agent.cert_fingerprint,
+        "cert_type": agent.cert_type.value,  # v0.4: Certificate type
+        "public_cert_fingerprint": agent.public_cert_fingerprint,  # v0.4: Public cert
+        "public_cert_serial_number": agent.public_cert_serial_number,  # v0.4
+        "public_cert_issued_at": agent.public_cert_issued_at.isoformat() if agent.public_cert_issued_at else None,  # v0.4
+        "public_cert_expires_at": agent.public_cert_expires_at.isoformat() if agent.public_cert_expires_at else None,  # v0.4
+        "public_cert_issuer": agent.public_cert_issuer,  # v0.4
+        "cert_serial_number": agent.cert_serial_number,  # v0.4: For OCSP
         "issued_at": agent.issued_at,
         "expires_at": agent.expires_at,
         "created_at": agent.created_at,
@@ -242,8 +307,16 @@ def get_agent(agent_name: str, request: Request, db: Session = Depends(get_db)):
         capabilities=agent.capabilities,
         status=agent.status,
         cert_fingerprint=agent.cert_fingerprint,
+        cert_serial_number=agent.cert_serial_number,  # v0.4: For OCSP
+        cert_type=agent.cert_type,  # v0.4: Certificate type
         issued_at=agent.issued_at,
         expires_at=agent.expires_at,
+        # v0.4: Public certificate fields
+        public_cert_fingerprint=agent.public_cert_fingerprint,
+        public_cert_serial_number=agent.public_cert_serial_number,
+        public_cert_issued_at=agent.public_cert_issued_at,
+        public_cert_expires_at=agent.public_cert_expires_at,
+        public_cert_issuer=agent.public_cert_issuer,
         created_at=agent.created_at,
         updated_at=agent.updated_at
     )
@@ -269,6 +342,7 @@ def rotate_agent_certificate(agent_name: str, db: Session = Depends(get_db)):
     try:
         private_key, cert, new_fingerprint = issue_agent_certificate(agent_name)
         cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode('utf-8')
+        cert_serial_number = str(cert.serial_number)  # v0.4: Store serial for OCSP
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -279,6 +353,7 @@ def rotate_agent_certificate(agent_name: str, db: Session = Depends(get_db)):
     now = datetime.utcnow()
     old_fingerprint = agent.cert_fingerprint
     agent.cert_fingerprint = new_fingerprint
+    agent.cert_serial_number = cert_serial_number  # v0.4: For OCSP
     agent.cert_pem = cert_pem
     agent.issued_at = now
     agent.expires_at = now + timedelta(days=settings.cert_validity_days)

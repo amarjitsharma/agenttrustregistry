@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from cryptography.hazmat.primitives import serialization
 
 from atr.core.db import Base, engine, SessionLocal
-from atr.core.models import Agent, AgentStatus, AuditEvent, AuditEventType
+from atr.core.models import Agent, AgentStatus, AuditEvent, AuditEventType, CertificateType
 from atr.core.validators import validate_agent_name
 from atr.pki.issue import issue_agent_certificate
 from atr.core.config import settings
@@ -52,6 +52,7 @@ def test_register_agent(db: Session):
         status=AgentStatus.ACTIVE,
         cert_fingerprint=fingerprint,
         cert_pem=cert_pem,
+        cert_type=CertificateType.PRIVATE,  # v0.4: Certificate type
         issued_at=now,
         expires_at=now + timedelta(days=settings.cert_validity_days),
         created_at=now,

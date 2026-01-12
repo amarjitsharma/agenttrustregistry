@@ -98,6 +98,30 @@ class Cache:
             pass
         
         return 0
+    
+    def increment(self, key: str, amount: int = 1, ttl: Optional[int] = None) -> int:
+        """
+        Increment a counter in cache (v0.4: for metrics).
+        
+        Args:
+            key: Cache key
+            amount: Amount to increment (default: 1)
+            ttl: Optional TTL in seconds
+            
+        Returns:
+            New value after increment
+        """
+        client = self._get_client()
+        if not client:
+            return 0
+        
+        try:
+            value = client.incrby(key, amount)
+            if ttl:
+                client.expire(key, ttl)
+            return value
+        except RedisError:
+            return 0
 
 
 # Global cache instance

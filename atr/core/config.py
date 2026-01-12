@@ -48,6 +48,45 @@ class Settings(BaseSettings):
     # Async processing settings (v0.3)
     async_processing_enabled: bool = False  # For now, disabled by default
     
+    # v0.4: Hybrid Certificate Architecture - ACME/Let's Encrypt settings
+    acme_enabled: bool = False  # Enable public certificate issuance via ACME
+    acme_account_email: Optional[str] = None  # Email for ACME account registration
+    acme_directory_url: str = "https://acme-staging-v02.api.letsencrypt.org/directory"  # Staging by default
+    acme_use_staging: bool = True  # Use staging environment (recommended for testing)
+    
+    # OCSP settings (v0.4)
+    ocsp_enabled: bool = True
+    
+    # v0.4: Phase 5 - RA Orchestration settings
+    ra_workflow_enabled: bool = True  # Enable workflow engine
+    ra_policy_enabled: bool = True  # Enable policy engine
+    certificate_renewal_enabled: bool = False  # Enable automated certificate renewal
+    certificate_renewal_days_ahead: int = 7  # Days before expiry to renew
+    certificate_renewal_check_interval: int = 3600  # Check interval in seconds (default: 1 hour)
+    
+    # v0.4: Phase 7 - Security Enhancements settings
+    hsm_enabled: bool = False  # Enable HSM integration
+    hsm_type: str = "file"  # HSM type: file, aws, azure
+    hsm_key_dir: Optional[Path] = None  # Directory for file-based HSM (defaults to pki_root_dir/hsm)
+    aws_hsm_cluster_id: Optional[str] = None  # AWS CloudHSM cluster ID
+    aws_hsm_key_arn: Optional[str] = None  # AWS CloudHSM key ARN
+    azure_key_vault_url: Optional[str] = None  # Azure Key Vault URL
+    
+    # Advanced rate limiting (per-domain)
+    rate_limit_per_domain_enabled: bool = False  # Enable per-domain rate limiting
+    rate_limit_per_domain_per_minute: int = 10  # Requests per minute per domain
+    
+    # Security monitoring
+    security_monitoring_enabled: bool = False  # Enable security monitoring
+    anomaly_detection_enabled: bool = False  # Enable anomaly detection
+    
+    # v0.4: Phase 6 - Performance Monitoring settings
+    performance_monitoring_enabled: bool = False  # Enable performance monitoring
+    query_cache_enabled: bool = False  # Enable query result caching
+    db_query_logging_enabled: bool = False  # Enable database query logging (for debugging)
+    db_pool_size: int = 5  # Database connection pool size
+    db_pool_max_overflow: int = 10  # Maximum overflow connections
+    
     model_config = {
         "env_file": ".env",
         "case_sensitive": False

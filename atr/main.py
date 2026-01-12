@@ -11,6 +11,9 @@ from atr.api.routes_agents import router as agents_router
 from atr.api.routes_verify import router as verify_router
 from atr.api.routes_health import router as health_router
 from atr.api.routes_transparency import router as transparency_router
+from atr.api.routes_ocsp import router as ocsp_router  # v0.4: OCSP responder
+from atr.api.routes_security import router as security_router  # v0.4: Security monitoring
+from atr.api.routes_domain_connect import router as domain_connect_router  # v0.4: Domain Connect
 from atr.pki.ca import get_ca
 from atr.core.rate_limit import get_rate_limiter, limiter, _rate_limit_exceeded_handler
 from atr.core.config import settings
@@ -21,7 +24,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Agent Trust Registry",
     description="Proof-of-concept for agent identity and trust management",
-    version="0.3.0"
+    version="0.4.0"
 )
 
 # Rate limiting
@@ -43,6 +46,9 @@ app.include_router(agents_router)
 app.include_router(verify_router)
 app.include_router(health_router)
 app.include_router(transparency_router)  # v0.3: Transparency log
+app.include_router(ocsp_router)  # v0.4: OCSP responder
+app.include_router(security_router)  # v0.4: Security monitoring
+app.include_router(domain_connect_router)  # v0.4: Domain Connect API
 
 # Serve static files (UI)
 static_dir = Path(__file__).parent / "static"
@@ -64,7 +70,7 @@ def root():
         return FileResponse(ui_path)
     return {
         "service": "Agent Trust Registry",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "docs": "/docs",
         "ui": "/static/index.html"
     }

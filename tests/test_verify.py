@@ -6,7 +6,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 
 from atr.core.db import Base, engine, SessionLocal
-from atr.core.models import Agent, AgentStatus
+from atr.core.models import Agent, AgentStatus, CertificateType
 from atr.pki.issue import issue_agent_certificate
 from atr.pki.fingerprints import compute_fingerprint
 from atr.core.config import settings
@@ -47,6 +47,7 @@ def test_verify_active_certificate(db: Session):
         status=AgentStatus.ACTIVE,
         cert_fingerprint=fingerprint,
         cert_pem=cert_pem,
+        cert_type=CertificateType.PRIVATE,  # v0.4: Certificate type
         issued_at=now,
         expires_at=now + timedelta(days=settings.cert_validity_days),
         created_at=now,
@@ -85,6 +86,7 @@ def test_verify_revoked_certificate_fails(db: Session):
         status=AgentStatus.REVOKED,  # Revoked
         cert_fingerprint=fingerprint,
         cert_pem=cert_pem,
+        cert_type=CertificateType.PRIVATE,  # v0.4: Certificate type
         issued_at=now,
         expires_at=now + timedelta(days=settings.cert_validity_days),
         created_at=now,
